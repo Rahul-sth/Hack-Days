@@ -112,7 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td class="py-3 px-4 font-mono text-gray-300">${visitor.time}</td>
                     <td class="py-3 px-4">${statusBadge}</td>
                     <td class="py-3 px-4 text-right">
-                        <button onclick="removeVisitor(${visitor.id})" class="px-2 py-1 text-gray-400 hover:text-rose-400 hover:bg-rose-500/10 rounded transition">
+                        <button onclick="removeVisitor(${visitor.id})" class="px-2 py-1 text-gray-400 hover:text-rose-400 hover:bg-rose-500/10 rounded transition" title="Remove Entry">
                             <i class="fa-solid fa-xmark"></i>
                         </button>
                     </td>
@@ -319,11 +319,38 @@ document.addEventListener('DOMContentLoaded', () => {
         updateUI();
     }
 
-    // Record Exit
+    // Record Exit & Remove Visitor from List
     function registerExit() {
         if (state.currentOccupancy <= 0) {
             showToast('Occupancy is already at 0', 'info');
             return;
+        }
+
+        let inputName = visitorNameInput ? visitorNameInput.value.trim() : '';
+        let targetIndex = -1;
+        let removedVisitorName = 'Anonymous Visitor';
+
+        // 1. If user typed a name into the input field, search for that visitor
+        if (inputName) {
+            targetIndex = state.visitors.findIndex(
+                v => v.name.toLowerCase() === inputName.toLowerCase() && v.status === 'ACTIVE'
+            );
+        }
+
+        // 2. If no matching name found or input was blank, remove the oldest active visitor (FIFO)
+        if (targetIndex === -1) {
+            for (let i = state.visitors.length - 1; i >= 0; i--) {
+                if (state.visitors[i].status === 'ACTIVE') {
+                    targetIndex = i;
+                    break;
+                }
+            }
+        }
+
+        // 3. Remove visitor from array if found
+        if (targetIndex !== -1) {
+            removedVisitorName = state.visitors[targetIndex].name;
+            state.visitors.splice(targetIndex, 1);
         }
 
         state.currentOccupancy--;
@@ -334,9 +361,13 @@ document.addEventListener('DOMContentLoaded', () => {
             trafficChart.update();
         }
 
-        addLog('PERSON EXITED', 'Exit Gate A', `Occupancy: ${state.currentOccupancy}`, 'amber');
+        addLog('PERSON EXITED', `Visitor: ${removedVisitorName}`, `Occupancy: ${state.currentOccupancy}`, 'amber');
         spawnCanvasDot('OUT');
+        showToast(`${removedVisitorName} has exited and was removed from the list.`, 'info');
 
+        if (visitorNameInput) visitorNameInput.value = '';
+
+        renderVisitorTable();
         updateUI();
     }
 
