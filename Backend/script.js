@@ -12,6 +12,7 @@ const state = {
     peakOccupancy: 0,
     peakTime: '--:--',
     turnAways: 0,
+    visitors: [], // Stores logged visitor objects { id, name, time, status }
     hourlyData: {
         labels: ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00'],
         in: [12, 18, 25, 0, 0, 0, 0, 0],
@@ -41,9 +42,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const turnAwayCount = document.getElementById('turnAwayCount');
     const statusBgGlow = document.getElementById('statusBgGlow');
 
+    const visitorNameInput = document.getElementById('visitorNameInput');
     const btnIn = document.getElementById('btnIn');
     const btnOut = document.getElementById('btnOut');
     const resetCountBtn = document.getElementById('resetCountBtn');
+
+    const visitorTableBody = document.getElementById('visitorTableBody');
+    const visitorCountBadge = document.getElementById('visitorCountBadge');
+    const clearVisitorsBtn = document.getElementById('clearVisitorsBtn');
 
     const maxCapInput = document.getElementById('maxCapInput');
     const applyCapBtn = document.getElementById('applyCapBtn');
@@ -71,6 +77,56 @@ document.addEventListener('DOMContentLoaded', () => {
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
     }
+
+    // Render Visitor Directory Table
+    function renderVisitorTable() {
+        if (!visitorTableBody) return;
+
+        if (state.visitors.length === 0) {
+            visitorTableBody.innerHTML = `
+                <tr id="noVisitorsRow">
+                    <td colspan="5" class="py-8 text-center text-gray-500 font-sans">
+                        <i class="fa-solid fa-user-clock text-2xl block mb-2 opacity-50"></i>
+                        No entries registered yet. Enter a visitor's name above to start tracking.
+                    </td>
+                </tr>
+            `;
+            if (visitorCountBadge) visitorCountBadge.innerText = '0';
+            return;
+        }
+
+        if (visitorCountBadge) visitorCountBadge.innerText = state.visitors.length;
+
+        visitorTableBody.innerHTML = state.visitors.map((visitor, index) => {
+            const statusBadge = visitor.status === 'ACTIVE' 
+                ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Inside Venue</span>`
+                : `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">Blocked (Cap Full)</span>`;
+
+            return `
+                <tr class="hover:bg-gray-800/30 transition">
+                    <td class="py-3 px-4 font-mono text-gray-400">${state.visitors.length - index}</td>
+                    <td class="py-3 px-4 font-bold text-gray-100 flex items-center space-x-2">
+                        <i class="fa-solid fa-circle-user text-brand-400 text-sm"></i>
+                        <span>${visitor.name}</span>
+                    </td>
+                    <td class="py-3 px-4 font-mono text-gray-300">${visitor.time}</td>
+                    <td class="py-3 px-4">${statusBadge}</td>
+                    <td class="py-3 px-4 text-right">
+                        <button onclick="removeVisitor(${visitor.id})" class="px-2 py-1 text-gray-400 hover:text-rose-400 hover:bg-rose-500/10 rounded transition">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    // Expose removeVisitor to global window object for direct inline click handler
+    window.removeVisitor = function(id) {
+        state.visitors = state.visitors.filter(v => v.id !== id);
+        renderVisitorTable();
+        showToast('Visitor entry removed from list', 'info');
+    };
 
     // Chart initialization helper
     function checkAndInitChart() {
@@ -194,18 +250,50 @@ document.addEventListener('DOMContentLoaded', () => {
         if (signageMaxCount) signageMaxCount.innerText = state.maxCapacity;
     }
 
-    // Record Entry
+    // Record Entry (Registers Visitor Name into Directory)
     function registerEntry() {
+        let name = visitorNameInput ? visitorNameInput.value.trim() : '';
+
+        if (!name) {
+            name = prompt("Please enter the visitor's name to process entry:");
+            if (!name || name.trim() === '') {
+                showToast('Entry cancelled: Name is required.', 'error');
+                return;
+            }
+            name = name.trim();
+        }
+
+        const timeStr = new Date().toLocaleTimeString();
+
         if (state.currentOccupancy >= state.maxCapacity) {
             state.turnAways++;
-            addLog('ENTRY BLOCKED', 'Door A', 'Capacity Limit Exceeded', 'rose');
-            showToast('Entry Blocked: Maximum Capacity Reached!', 'error');
+            
+            // Add to Visitor Directory as blocked
+            state.visitors.unshift({
+                id: Date.now(),
+                name: name,
+                time: timeStr,
+                status: 'BLOCKED'
+            });
+
+            addLog('ENTRY BLOCKED', `Visitor: ${name}`, 'Capacity Limit Exceeded', 'rose');
+            showToast(`Entry Blocked for ${name}: Max Capacity Reached!`, 'error');
+            if (visitorNameInput) visitorNameInput.value = '';
+            renderVisitorTable();
             updateUI();
             return;
         }
 
         state.currentOccupancy++;
         state.totalInToday++;
+
+        // Add to Visitor Directory List
+        state.visitors.unshift({
+            id: Date.now(),
+            name: name,
+            time: timeStr,
+            status: 'ACTIVE'
+        });
 
         if (state.currentOccupancy > state.peakOccupancy) {
             state.peakOccupancy = state.currentOccupancy;
@@ -217,13 +305,17 @@ document.addEventListener('DOMContentLoaded', () => {
             trafficChart.update();
         }
 
-        addLog('PERSON ENTERED', 'Entrance Gate A', `Occupancy: ${state.currentOccupancy}`, 'emerald');
+        addLog('PERSON ENTERED', `Visitor: ${name}`, `Occupancy: ${state.currentOccupancy}`, 'emerald');
         spawnCanvasDot('IN');
+        showToast(`Welcome, ${name}! Entry registered.`, 'info');
+
+        if (visitorNameInput) visitorNameInput.value = '';
 
         if (state.currentOccupancy === state.maxCapacity) {
             showToast('Warning: Venue has reached 100% Maximum Capacity!', 'error');
         }
 
+        renderVisitorTable();
         updateUI();
     }
 
@@ -371,6 +463,23 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btnIn) btnIn.addEventListener('click', registerEntry);
     if (btnOut) btnOut.addEventListener('click', registerExit);
 
+    if (visitorNameInput) {
+        visitorNameInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                registerEntry();
+            }
+        });
+    }
+
+    if (clearVisitorsBtn) {
+        clearVisitorsBtn.addEventListener('click', () => {
+            state.visitors = [];
+            renderVisitorTable();
+            showToast('Visitor directory cleared', 'info');
+        });
+    }
+
     window.addEventListener('keydown', (e) => {
         if (e.target.tagName === 'INPUT') return;
         if (e.key === '+' || e.key === '=') registerEntry();
@@ -427,6 +536,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initial Execution Steps
     checkAndInitChart();
+    renderVisitorTable();
     updateUI();
     if (canvas) drawSensorCanvas();
     addLog('SYSTEM STARTED', 'Main Sensor Gate A', 'Optical Sensor Active', 'emerald');
