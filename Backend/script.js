@@ -1,9 +1,9 @@
 /* ==========================================================================
-   OCCUSENSE CORE APPLICATION STATE & LOGIC
+   OCCUSENSE CORE APPLICATION STATE & LOGIC (WITH FULL PERSISTENCE)
    ========================================================================== */
 
-// State variables
-const state = {
+// Default state structure including activity logs
+const defaultState = {
     currentOccupancy: 0,
     maxCapacity: 100,
     warningThresholdPct: 80,
@@ -13,12 +13,38 @@ const state = {
     peakTime: '--:--',
     turnAways: 0,
     visitors: [], // Stores logged visitor objects { id, name, time, status }
+    activityLogs: [], // Stores log objects { id, action, location, detail, color, timeStr }
     hourlyData: {
         labels: ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00'],
         in: [12, 18, 25, 0, 0, 0, 0, 0],
         out: [4, 10, 10, 0, 0, 0, 0, 0]
     }
 };
+
+// Load saved state from LocalStorage or initialize default
+let state = loadState();
+
+function loadState() {
+    try {
+        const saved = localStorage.getItem('occuSense_data');
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            if (!parsed.activityLogs) parsed.activityLogs = [];
+            return parsed;
+        }
+    } catch (e) {
+        console.error("Could not load saved state from localStorage", e);
+    }
+    return JSON.parse(JSON.stringify(defaultState));
+}
+
+function saveState() {
+    try {
+        localStorage.setItem('occuSense_data', JSON.stringify(state));
+    } catch (e) {
+        console.error("Could not save state to localStorage", e);
+    }
+}
 
 // Global variables for canvas and chart instances
 let trafficChart = null;
@@ -70,6 +96,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const signageStatusIcon = document.getElementById('signageStatusIcon');
     const signageIconBox = document.getElementById('signageIconBox');
 
+    // Sync input fields with restored settings
+    if (maxCapInput) maxCapInput.value = state.maxCapacity;
+    if (warningRange) warningRange.value = state.warningThresholdPct;
+    if (warningRangeVal) warningRangeVal.innerText = `${state.warningThresholdPct}%`;
+
     // Canvas Setup
     canvas = document.getElementById('sensorCanvas');
     if (canvas) {
@@ -78,11 +109,61 @@ document.addEventListener('DOMContentLoaded', () => {
         window.addEventListener('resize', resizeCanvas);
     }
 
+    // Render Saved Activity Feed
+    function renderActivityLogs() {
+        if (!logContainer) return;
+
+        if (!state.activityLogs || state.activityLogs.length === 0) {
+            logContainer.innerHTML = '';
+            return;
+        }
+
+        const colorMap = {
+            emerald: 'text-emerald-400 border-emerald-500/30 bg-emerald-500/5',
+            amber: 'text-amber-400 border-amber-500/30 bg-amber-500/5',
+            rose: 'text-rose-400 border-rose-500/30 bg-rose-500/5'
+        };
+
+        logContainer.innerHTML = state.activityLogs.map(log => `
+            <div class="p-2.5 rounded-xl border ${colorMap[log.color] || colorMap.emerald} flex items-center justify-between transition">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid ${log.color === 'rose' ? 'fa-ban' : log.color === 'emerald' ? 'fa-arrow-right-to-bracket' : 'fa-arrow-right-from-bracket'}"></i>
+                    <div>
+                        <span class="font-bold block">${log.action}</span>
+                        <span class="text-[10px] text-gray-400 block">${log.location} • ${log.detail}</span>
+                    </div>
+                </div>
+                <span class="text-[10px] text-gray-500">${log.timeStr}</span>
+            </div>
+        `).join('');
+    }
+
+    // Add item to directional log feed and persist it
+    function addLog(action, location, detail, color = 'emerald') {
+        const logEntry = {
+            id: Date.now(),
+            action,
+            location,
+            detail,
+            color,
+            timeStr: new Date().toLocaleTimeString()
+        };
+
+        // Keep last 50 log items to prevent memory bloat
+        state.activityLogs.unshift(logEntry);
+        if (state.activityLogs.length > 50) {
+            state.activityLogs.pop();
+        }
+
+        saveState();
+        renderActivityLogs();
+    }
+
     // Render Visitor Directory Table
     function renderVisitorTable() {
         if (!visitorTableBody) return;
 
-        if (state.visitors.length === 0) {
+        if (!state.visitors || state.visitors.length === 0) {
             visitorTableBody.innerHTML = `
                 <tr id="noVisitorsRow">
                     <td colspan="5" class="py-8 text-center text-gray-500 font-sans">
@@ -121,9 +202,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }).join('');
     }
 
-    // Expose removeVisitor to global window object for direct inline click handler
+    // Expose removeVisitor to global window object
     window.removeVisitor = function(id) {
         state.visitors = state.visitors.filter(v => v.id !== id);
+        saveState();
         renderVisitorTable();
         showToast('Visitor entry removed from list', 'info');
     };
@@ -250,7 +332,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (signageMaxCount) signageMaxCount.innerText = state.maxCapacity;
     }
 
-    // Record Entry (Registers Visitor Name into Directory)
+    // Record Entry
     function registerEntry() {
         let name = visitorNameInput ? visitorNameInput.value.trim() : '';
 
@@ -268,7 +350,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (state.currentOccupancy >= state.maxCapacity) {
             state.turnAways++;
             
-            // Add to Visitor Directory as blocked
             state.visitors.unshift({
                 id: Date.now(),
                 name: name,
@@ -279,6 +360,7 @@ document.addEventListener('DOMContentLoaded', () => {
             addLog('ENTRY BLOCKED', `Visitor: ${name}`, 'Capacity Limit Exceeded', 'rose');
             showToast(`Entry Blocked for ${name}: Max Capacity Reached!`, 'error');
             if (visitorNameInput) visitorNameInput.value = '';
+            saveState();
             renderVisitorTable();
             updateUI();
             return;
@@ -287,7 +369,6 @@ document.addEventListener('DOMContentLoaded', () => {
         state.currentOccupancy++;
         state.totalInToday++;
 
-        // Add to Visitor Directory List
         state.visitors.unshift({
             id: Date.now(),
             name: name,
@@ -315,11 +396,12 @@ document.addEventListener('DOMContentLoaded', () => {
             showToast('Warning: Venue has reached 100% Maximum Capacity!', 'error');
         }
 
+        saveState();
         renderVisitorTable();
         updateUI();
     }
 
-    // Record Exit & Remove Visitor from List
+    // Record Exit & Remove Visitor
     function registerExit() {
         if (state.currentOccupancy <= 0) {
             showToast('Occupancy is already at 0', 'info');
@@ -330,14 +412,12 @@ document.addEventListener('DOMContentLoaded', () => {
         let targetIndex = -1;
         let removedVisitorName = 'Anonymous Visitor';
 
-        // 1. If user typed a name into the input field, search for that visitor
         if (inputName) {
             targetIndex = state.visitors.findIndex(
                 v => v.name.toLowerCase() === inputName.toLowerCase() && v.status === 'ACTIVE'
             );
         }
 
-        // 2. If no matching name found or input was blank, remove the oldest active visitor (FIFO)
         if (targetIndex === -1) {
             for (let i = state.visitors.length - 1; i >= 0; i--) {
                 if (state.visitors[i].status === 'ACTIVE') {
@@ -347,7 +427,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // 3. Remove visitor from array if found
         if (targetIndex !== -1) {
             removedVisitorName = state.visitors[targetIndex].name;
             state.visitors.splice(targetIndex, 1);
@@ -367,34 +446,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (visitorNameInput) visitorNameInput.value = '';
 
+        saveState();
         renderVisitorTable();
         updateUI();
-    }
-
-    // Add item to directional log feed
-    function addLog(action, location, detail, color = 'emerald') {
-        if (!logContainer) return;
-        const timeStr = new Date().toLocaleTimeString();
-        const colorMap = {
-            emerald: 'text-emerald-400 border-emerald-500/30 bg-emerald-500/5',
-            amber: 'text-amber-400 border-amber-500/30 bg-amber-500/5',
-            rose: 'text-rose-400 border-rose-500/30 bg-rose-500/5'
-        };
-
-        const html = `
-            <div class="p-2.5 rounded-xl border ${colorMap[color]} flex items-center justify-between transition">
-                <div class="flex items-center space-x-2">
-                    <i class="fa-solid ${color === 'rose' ? 'fa-ban' : color === 'emerald' ? 'fa-arrow-right-to-bracket' : 'fa-arrow-right-from-bracket'}"></i>
-                    <div>
-                        <span class="font-bold block">${action}</span>
-                        <span class="text-[10px] text-gray-400 block">${location} • ${detail}</span>
-                    </div>
-                </div>
-                <span class="text-[10px] text-gray-500">${timeStr}</span>
-            </div>
-        `;
-
-        logContainer.insertAdjacentHTML('afterbegin', html);
     }
 
     // Toast Notification System
@@ -506,6 +560,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (clearVisitorsBtn) {
         clearVisitorsBtn.addEventListener('click', () => {
             state.visitors = [];
+            saveState();
             renderVisitorTable();
             showToast('Visitor directory cleared', 'info');
         });
@@ -522,6 +577,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const val = parseInt(maxCapInput.value, 10);
             if (val && val > 0) {
                 state.maxCapacity = val;
+                saveState();
                 updateUI();
                 showToast(`Max Capacity set to ${val}`);
             }
@@ -532,6 +588,7 @@ document.addEventListener('DOMContentLoaded', () => {
         warningRange.addEventListener('input', (e) => {
             state.warningThresholdPct = parseInt(e.target.value, 10);
             if (warningRangeVal) warningRangeVal.innerText = `${state.warningThresholdPct}%`;
+            saveState();
             updateUI();
         });
     }
@@ -546,6 +603,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (resetCountBtn) {
         resetCountBtn.addEventListener('click', () => {
             state.currentOccupancy = 0;
+            saveState();
             updateUI();
             showToast('Current occupancy reset to 0');
         });
@@ -568,7 +626,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initial Execution Steps
     checkAndInitChart();
     renderVisitorTable();
+    renderActivityLogs();
     updateUI();
     if (canvas) drawSensorCanvas();
-    addLog('SYSTEM STARTED', 'Main Sensor Gate A', 'Optical Sensor Active', 'emerald');
+
+    // Log initial page session start if feed is empty
+    if (state.activityLogs.length === 0) {
+        addLog('SYSTEM STARTED', 'Main Sensor Gate A', 'Optical Sensor Active', 'emerald');
+    }
 });
