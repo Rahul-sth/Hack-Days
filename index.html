@@ -49,7 +49,7 @@
         }
     </script>
 
-    <link rel="stylesheet" href="Frontend/style.css">
+    <link rel="stylesheet" href="style.css">
 </head>
 <body class="min-h-screen bg-[#0b0f17] text-gray-100 antialiased selection:bg-brand-500 selection:text-white">
 
@@ -71,21 +71,26 @@
                         </div>
                     </div>
                 </div>
-               <!-- Navigation Links -->
-<nav class="p-4 space-y-1.5">
-    <a href="#dashboard" class="flex items-center space-x-3 px-4 py-3 rounded-xl bg-brand-600/20 text-brand-400 border border-brand-500/30 font-medium text-sm transition">
-        <i class="fa-solid fa-chart-pie w-5 text-center"></i>
-        <span>Live Dashboard</span>
-    </a>
-    <a href="#analytics" class="flex items-center space-x-3 px-4 py-3 rounded-xl text-gray-400 hover:bg-gray-800/50 hover:text-gray-200 font-medium text-sm transition">
-        <i class="fa-solid fa-chart-line w-5 text-center"></i>
-        <span>Traffic Analytics</span>
-    </a>
-    <a href="#settings" class="flex items-center space-x-3 px-4 py-3 rounded-xl text-gray-400 hover:bg-gray-800/50 hover:text-gray-200 font-medium text-sm transition">
-        <i class="fa-solid fa-sliders w-5 text-center"></i>
-        <span>Capacity Rules</span>
-    </a>
-</nav>
+
+                <!-- Navigation Links -->
+                <nav class="p-4 space-y-1.5">
+                    <a href="#dashboard" class="flex items-center space-x-3 px-4 py-3 rounded-xl bg-brand-600/20 text-brand-400 border border-brand-500/30 font-medium text-sm transition">
+                        <i class="fa-solid fa-chart-pie w-5 text-center"></i>
+                        <span>Live Dashboard</span>
+                    </a>
+                    <a href="#sensor-feed" class="flex items-center space-x-3 px-4 py-3 rounded-xl text-gray-400 hover:bg-gray-800/50 hover:text-gray-200 font-medium text-sm transition">
+                        <i class="fa-solid fa-video w-5 text-center"></i>
+                        <span>Sensor Feed</span>
+                    </a>
+                    <a href="#analytics" class="flex items-center space-x-3 px-4 py-3 rounded-xl text-gray-400 hover:bg-gray-800/50 hover:text-gray-200 font-medium text-sm transition">
+                        <i class="fa-solid fa-chart-line w-5 text-center"></i>
+                        <span>Traffic Analytics</span>
+                    </a>
+                    <a href="#settings" class="flex items-center space-x-3 px-4 py-3 rounded-xl text-gray-400 hover:bg-gray-800/50 hover:text-gray-200 font-medium text-sm transition">
+                        <i class="fa-solid fa-sliders w-5 text-center"></i>
+                        <span>Capacity Rules</span>
+                    </a>
+                </nav>
             </div>
 
             <!-- Quick Action Signage Trigger -->
@@ -219,7 +224,7 @@
                 </section>
 
                 <!-- MIDDLE SECTION: SENSOR FEED & DIRECTIONAL LOGS -->
-                <section id="analytics" class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <section id="sensor-feed" class="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
                     <!-- VISUAL CANVAS DIRECTIONAL SENSOR SIMULATOR -->
                     <div class="lg:col-span-7 glass-panel rounded-2xl p-5 flex flex-col">
@@ -265,7 +270,7 @@
                 </section>
 
                 <!-- BOTTOM SECTION: HOURLY ANALYTICS CHART & SETTINGS -->
-                <section  class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <section id="analytics" class="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
                     <!-- HOURLY FOOT TRAFFIC CHART -->
                     <div class="lg:col-span-8 glass-panel rounded-2xl p-5">
@@ -390,7 +395,6 @@
 
     <!-- TOAST NOTIFICATION CONTAINER -->
     <div id="toastContainer" class="fixed bottom-6 right-6 z-40 space-y-3 pointer-events-none"></div>
-
-    <script src="Backend/script.js"></script>
+    <script src="Backend/script.js" defer></script>
 </body>
 </html>
